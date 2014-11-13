@@ -20,26 +20,31 @@ public class Bus {
 
     public static int read(String address, int currProcessor) {
         Cache cache;
-        int data = 0;
+        boolean isResultExist = false;
         for (int i = 0; i < numOfProc; i++) {
             if(i == currProcessor)
                 continue;
 
             cache = processors.get(i).getCache();
-            data = cache.busRead(address);
+            int data = cache.busRead(address);
+            if(data != 0) isResultExist = true;
+
         }
-        return data;
+        return isResultExist ? 1 : 0;
     }
 
-    public static void readEx(String address, int currProcessor) {
+    public static int readEx(String address, int currProcessor) {
         Cache cache;
+        boolean isResultExist = false;
         for (int i = 0; i < numOfProc; i++) {
             if(i == currProcessor)
                 continue;
 
             cache = processors.get(i).getCache();
-            cache.busReadEx(address);
+            int data = cache.busReadEx(address);
+            if(data != 0) isResultExist = true;
         }
+        return isResultExist ? 1 : 0;
     }
 
 }

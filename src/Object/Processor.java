@@ -3,6 +3,8 @@ package Object;
 import Protocol.MESI;
 import Protocol.MSI;
 
+import java.io.IOException;
+
 /**
  * Created by Bo on 11/6/14.
  */
@@ -13,8 +15,8 @@ public class Processor {
     int cacheState;
     int processorNum;
 
-    public Processor(int cacheSize, int blockSize, int associativity, int protocol, int procNum) {
-        cache = new Cache().getInstance(cacheSize, blockSize, associativity, protocol, processorNum);
+    public Processor(int cacheSize, int blockSize, int associativity, int protocol, int procNum, boolean isUniProc) {
+        cache = new Cache().getInstance(cacheSize, blockSize, associativity, protocol, procNum, isUniProc);
         cacheProtocol = protocol;
         processorNum = procNum;
         if(protocol == MESI.PROTOCOL)
@@ -23,12 +25,22 @@ public class Processor {
             cacheState = MSI.STATE_INVALID;
     }
 
-    public void write(String address) {
+    public void store(String address) {
+        cache.addCycles(1); //store instruction
         cache.processorWriteCache(address);
     }
 
-    public void read(String address) {
+    public void load(String address) {
+        cache.addCycles(1); //load instruction
         cache.processorReadCache(address);
+    }
+
+    public void fetch() {
+        cache.addCycles(1); //fetch instruction
+    }
+
+    public void createLog() throws IOException{
+        cache.createlog();
     }
 
     public Cache getCache() {

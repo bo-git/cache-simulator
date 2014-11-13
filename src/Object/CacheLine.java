@@ -12,11 +12,12 @@ public class CacheLine {
     private int dirtyBit;
     private int blockState; //the protocol state
 
-    public CacheLine(int blockSize, String tagString) {
+    public CacheLine(int blockSize, String tagString, int state) {
         data = new int[blockSize];
         tag = tagString;
         validBit = 0;
         dirtyBit = 0;
+        blockState = state;
     }
 
     public int getDataAtPosition(int position) {
