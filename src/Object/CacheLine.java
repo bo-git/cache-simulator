@@ -11,6 +11,7 @@ public class CacheLine {
     private int validBit;
     private int dirtyBit;
     private int blockState; //the protocol state
+    private int usageCount;
 
     public CacheLine(int blockSize, String tagString, int state) {
         data = new int[blockSize];
@@ -54,5 +55,16 @@ public class CacheLine {
 
     public void setTag(String s) {
         tag = s;
+    }
+
+    public void incUsageCount() { usageCount ++; }
+
+    public int getUsageCount() { return usageCount; }
+
+    public void updateCacheLine(String tag, int offset, int blockState) {
+        this.tag = tag;
+        data[offset] = 1;
+        this.blockState = blockState;
+        this.usageCount = 1;
     }
 }

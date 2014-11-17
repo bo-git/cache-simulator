@@ -11,8 +11,12 @@ import java.io.*;
 public class CacheSimulation {
 
     static final String MESI_PROTOCOL = "mesi";
+    static final String SPACE = " ";
+    static final String TRACE = "Trace logs/";
 
     Vector<Processor> processors;
+    String[] operationQueue;
+    boolean[] isComplete;
 
     public CacheSimulation() {}
 
@@ -28,14 +32,15 @@ public class CacheSimulation {
                 processors.add(new Processor(cacheSize, blkSize,associativity, MSI.PROTOCOL , i, isUniProcessor));
         }
         System.out.println(processors.size());
-        Bus.setNumOfProc(processors.size());
-        Bus.setProcessors(processors);
+        operationQueue = new String[numProcessor];
+        isComplete = new boolean[numProcessor];
+        Bus.initBus(processors);
+
     }
 
     public void run(String inputFile, String numProcessor) throws Exception{
-        String path = "Trace logs/"+inputFile.toLowerCase()+numProcessor;
+        String path = TRACE+inputFile.toLowerCase()+numProcessor;
         File dir = new File(path);
-
         if(!dir.isDirectory()) {
             System.out.println("no such folder");
             System.exit(0);
@@ -43,44 +48,55 @@ public class CacheSimulation {
         File[] files = dir.listFiles();
         BufferedReader[] readers = new BufferedReader[files.length];
         for (int i = 0; i < files.length; i++) {
-//            System.out.println(files[i].getName());
             readers[i] = new BufferedReader(new FileReader(files[i]));
-//            System.out.println("reader "+i+"  "+readers[i].toString());
         }
         String line;
-        int counter = 0;
-        while((line = readers[0].readLine()) != null) {
-//            System.out.println("reader 0 "+readers[0].toString());
-            execute(line, 0);
-            for (int j = 1; j < files.length; j++) {
-//                System.out.println("reader "+j+"  "+readers[j].toString());
-                line = readers[j].readLine();
-                execute(line, j);
+        int globalCycle = 1;
+        while(!isAllComplete()) {
+            for(int j=0; j<readers.length; j++) {
+                if(processors.get(j).isCacheBlock()) {
+                    processors.get(j).cacheSnoopBus(globalCycle);
+                    continue;
+                }
+                line = operationQueue[j];
+                if(line.isEmpty())
+                    line = readers[j].readLine();
+                if(line != null) {
+                    String[] info = line.split(SPACE);
+                    String anotherInst = null;
+                    if(info[0].equals("0"))
+                        anotherInst = readers[j].readLine();
+                    execute(info[0],info[1],j, globalCycle); //the first inst
+                    if(anotherInst != null && anotherInst.charAt(0) == '0')
+                        operationQueue[j] = anotherInst;
+                    else if(anotherInst != null) {
+                        info = anotherInst.split(SPACE);
+                        execute(info[0],info[1],j, globalCycle); //the second instru
+                    }
+                } else {
+                    isComplete[j] = true;
+                }
             }
-//            counter ++;
-//            if(counter == 100)
-//                break;
+            Bus.executeBusTransactions(globalCycle);
+            globalCycle++;
         }
         log();
     }
 
-    void execute(String line, int index) {
-        String[] info = line.split(" ");
-        switch (Integer.parseInt(info[0])) {
+    void execute(String instruction, String address, int index, int currCycle) {
+        switch (Integer.parseInt(instruction)) {
             case 0:
                 // fetch instruction
-//                System.out.println("fetching ... ");
                 processors.get(index).fetch();
                 break;
             case 2:
-//                System.out.println("reading "+info[1]);
-                processors.get(index).load(info[1]);
+                processors.get(index).load(address, currCycle);
                 break;
             case 3:
-                processors.get(index).store(info[1]);
-//                System.out.println("writing "+info[1]);
+                processors.get(index).store(address, currCycle);
                 break;
             default:
+                System.out.println("something wrong");
                 break;
         }
     }
@@ -91,11 +107,18 @@ public class CacheSimulation {
         }
     }
 
+    boolean isAllComplete() {
+        for(boolean b : isComplete) {
+            if(!b) return false;
+        }
+        return true;
+    }
+
     public static void main(String[] args) {
         try {
 //            CacheSimulation cs = new CacheSimulation(args[0], Integer.parseInt(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), Integer.parseInt(args[5]));
 //            cs.run(args[1], args[2]);
-            CacheSimulation cs1 = new CacheSimulation("msi",1,1,4,16);
+            CacheSimulation cs1 = new CacheSimulation("msi",1,1,4,64);
             cs1.run("fft","1");
         } catch (Exception e) {
             e.printStackTrace();

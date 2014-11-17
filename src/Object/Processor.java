@@ -14,6 +14,7 @@ public class Processor {
     int cacheProtocol;
     int cacheState;
     int processorNum;
+    boolean isCacheBlock;
 
     public Processor(int cacheSize, int blockSize, int associativity, int protocol, int procNum, boolean isUniProc) {
         cache = new Cache().getInstance(cacheSize, blockSize, associativity, protocol, procNum, isUniProc);
@@ -25,18 +26,20 @@ public class Processor {
             cacheState = MSI.STATE_INVALID;
     }
 
-    public void store(String address) {
-        cache.addCycles(1); //store instruction
+    public void store(String address, int currCycle) {
+        cacheSnoopBus(currCycle);
         cache.processorWriteCache(address);
     }
 
-    public void load(String address) {
-        cache.addCycles(1); //load instruction
+    public void load(String address, int currCycle) {
+        cacheSnoopBus(currCycle);
         cache.processorReadCache(address);
     }
 
-    public void fetch() {
-        cache.addCycles(1); //fetch instruction
+    public void fetch() {}
+
+    public void cacheSnoopBus(int currCycle) {
+        cache.snoopBus(currCycle);
     }
 
     public void createLog() throws IOException{
@@ -47,4 +50,7 @@ public class Processor {
         return cache;
     }
 
+    public boolean isCacheBlock() {
+        return cache.isCacheWaitingForResult();
+    }
 }
