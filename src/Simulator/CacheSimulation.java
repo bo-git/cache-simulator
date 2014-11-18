@@ -59,7 +59,7 @@ public class CacheSimulation {
                     continue;
                 }
                 line = operationQueue[j];
-                if(line.isEmpty())
+                if(line == null || line.isEmpty())
                     line = readers[j].readLine();
                 if(line != null) {
                     String[] info = line.split(SPACE);
@@ -79,26 +79,34 @@ public class CacheSimulation {
             }
             Bus.executeBusTransactions(globalCycle);
             globalCycle++;
+
+            if(globalCycle == 200)
+                break;
         }
         log();
     }
 
     void execute(String instruction, String address, int index, int currCycle) {
+
         switch (Integer.parseInt(instruction)) {
             case 0:
-                // fetch instruction
                 processors.get(index).fetch();
                 break;
             case 2:
+                System.out.println("running proc: "+index);
+                System.out.print("read ");
                 processors.get(index).load(address, currCycle);
                 break;
             case 3:
+                System.out.println("running proc: "+index);
+                System.out.print("write ");
                 processors.get(index).store(address, currCycle);
                 break;
             default:
                 System.out.println("something wrong");
                 break;
         }
+//        System.out.println();
     }
 
     void log() throws IOException{
@@ -118,8 +126,8 @@ public class CacheSimulation {
         try {
 //            CacheSimulation cs = new CacheSimulation(args[0], Integer.parseInt(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), Integer.parseInt(args[5]));
 //            cs.run(args[1], args[2]);
-            CacheSimulation cs1 = new CacheSimulation("msi",1,1,4,64);
-            cs1.run("fft","1");
+            CacheSimulation cs1 = new CacheSimulation("msi",2,1,4,64);
+            cs1.run("fft","2");
         } catch (Exception e) {
             e.printStackTrace();
         }
