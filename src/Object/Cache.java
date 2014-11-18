@@ -27,9 +27,10 @@ public class Cache {
     int rowIndex;       //the row number (set number)
 
     private int protocol, cacheIdentity;
-    private boolean isUniProcessor, isCreateTransaction, isWaiting;
+    private boolean isUniProcessor, isWaiting;
+    private OperationPair currWaitingOperation;
 
-    private int cycles, memAccess, readMiss, writeMiss;
+    private int cycles, memAccess, readMiss, writeMiss, writeHit, readHit;
     private int expectedCycleToComplete; //keep track of access to mem
 
     private Cache cache;
@@ -83,38 +84,32 @@ public class Cache {
 
     public void snoopBus(int cycle) {
         setClockCycles(cycle);
-        if(Bus.isBusBlocked()) return;
         OperationPair op = Bus.busLine.getOp();
         if(op == null) return;
-        if(Bus.busLine.getReceiverProcessorNumberOnBus() == cacheIdentity) {
-            if(Bus.busLine.getResultOnBus()) {
-                //true someone reply
+        if(Bus.busLine.getReceiverProcessorNumberOnBus() == cacheIdentity && Bus.isBusTransactionComplete) {
+            if(Bus.busLine.getResultOnBus()) { //true if busRead, busReadEx reply && access mem
                 updateCacheBlockAfterSnooping(op);
-            } else {
-                //no one has it, have to access mem no matter read or write
+            } else {//no one has it, have to access mem no matter read or write
+                memAccess++;
                 if(op.getOpsNumber() == Bus.BUS_READ)
                     Bus.insertTransactionOnBus(new OperationPair(Bus.BUS_ACCESS_MEMORY_READ,
-                        cacheIdentity, Bus.busLine.getCurrOpAddresOnBus(), cycles));
+                        cacheIdentity, Bus.busLine.getCurrOpAddresOnBus(), cycles, Bus.BUS_READ));
                 else if(op.getOpsNumber() == Bus.BUS_READEX)
                     Bus.insertTransactionOnBus(new OperationPair(Bus.BUS_ACCESS_MEMORY_WRITE,
                             cacheIdentity, Bus.busLine.getCurrOpAddresOnBus(), cycles));
-                //if mesi , then this data from mem will be unqiue and exclusive state
-                if(protocol == MESI.PROTOCOL && op.getOpsNumber() == Bus.BUS_READ)
-
             }
-        } else { //not equal to the same identity
+            Bus.busLine.setReceived();  //inform queue that the transaction is received, ready for next instruction
+            if(currWaitingOperation.equals(op))
+                isWaiting = false;
+            System.out.println("proc "+cacheIdentity+" waiting: "+isWaiting);
+        } else if(!isUniProcessor) { //not equal to the same identity and not uniproc
             if(op.getOpsNumber() == Bus.BUS_READ) executeBusRead(op);
             if(op.getOpsNumber() == Bus.BUS_READEX) executeBusReadEx(op);
         }
-        //check bus
-        //if is requester then update
-        //  iswaiting set to false;
-        //else invalidate copy if block hit
-
-        //note this will still take 1 cycle, so don't update
     }
 
     void updateCacheBlockAfterSnooping(OperationPair op) {
+        if(op.getOpsNumber() == Bus.BUS_FLUSH) return; //don't have to care about flush
         VisitAddress addr = new VisitAddress(op.getAddress());
 
         Vector<CacheLine> cacheSet;
@@ -129,9 +124,13 @@ public class Cache {
         else if(op.getOpsNumber() == Bus.BUS_READEX || op.getOpsNumber() == Bus.BUS_ACCESS_MEMORY_WRITE)
             state = MSI.STATE_MODIFIED;
 
+        if(op.getOpsNumber() == Bus.BUS_ACCESS_MEMORY_READ
+                && op.getPrevOps() == Bus.BUS_READ && protocol == MESI.PROTOCOL) //handles special case for mesi
+            state = MESI.STATE_EXCLUSIVE;
 
         if(associativity == 1) { // fully associative
             CacheLine cacheLine = cacheSet.get(addr.set);
+            //if cache hit then update, if not same tag, eviction, which is free
             cacheLine.updateCacheLine(addr.tag,addr.blockOffSetNumber,state);
         } else {
             int lowerestUsageCacheId = 1000000;
@@ -140,14 +139,17 @@ public class Cache {
                 cacheLine = cacheSet.get(i);
                 if(cacheLine.getUsageCount() < lowerestUsageCacheId)
                     lowerestUsageCacheId = i;
+                if(cacheLine.getTag().equals(addr.tag)) {
+                    cacheLine.updateCacheLine(addr.tag,addr.blockOffSetNumber,state);
+                    return;
+                }
             }
-            cacheLine = cacheSet.get(lowerestUsageCacheId);
+            cacheLine = cacheSet.get(lowerestUsageCacheId); //LRU policy & eviction
             cacheLine.updateCacheLine(addr.tag,addr.blockOffSetNumber,state);
         }
     }
 
     public int processorReadCache(String address) {
-        isCreateTransaction = true;
         VisitAddress addr = new VisitAddress(address);
         Vector<CacheLine> cacheSet;
         if(associativity > 1)
@@ -197,40 +199,28 @@ public class Cache {
         switch(cacheLine.getBlockState()) {
             case MESI.STATE_MODIFIED:
                 if(transaction == PROCESSOR_WRITE) {
-                    isCreateTransaction = false;
                     result = cacheLineWrite(cacheLine, offset, tag, address);
-                    if(result != 0) result = writeToMemory(cacheLine, offset);
                 } else if(transaction == PROCESSOR_READ) {
-                    isCreateTransaction = false;
                     result = cacheLineRead(cacheLine,offset, tag, address);
                 }
                 break;
             case MESI.STATE_EXCLUSIVE:
                 if(transaction == PROCESSOR_WRITE) {
-                    isCreateTransaction = false;
                     result = cacheLineWrite(cacheLine,offset,tag, address);
-                    if(result != 0) result = writeToMemory(cacheLine, offset);
-                    cacheLine.setBlockState(MESI.STATE_MODIFIED);
                 } else if(transaction == PROCESSOR_READ) {
-                    isCreateTransaction = false;
                     result = cacheLineRead(cacheLine,offset, tag, address);
                 }
                 break;
             case MESI.STATE_SHARED:
                 if(transaction == PROCESSOR_WRITE) {
                     result = cacheLineWrite(cacheLine,offset,tag, address);
-                    if(result != 0) result = writeToMemory(cacheLine, offset);
-                    cacheLine.setBlockState(MESI.STATE_MODIFIED);
                 } else if(transaction == PROCESSOR_READ) {
-                    isCreateTransaction = false;
                     result = cacheLineRead(cacheLine,offset, tag, address);
                 }
                 break;
             case MESI.STATE_INVALID:
                 if(transaction == PROCESSOR_WRITE) {
                     result = cacheLineWrite(cacheLine,offset,tag, address);
-                    if(result != 0) result = writeToMemory(cacheLine, offset);
-                    cacheLine.setBlockState(MESI.STATE_MODIFIED);
                 } else if(transaction == PROCESSOR_READ) { // check this again!!!!! ****** 99
                     result = cacheLineRead(cacheLine,offset, tag, address);
                 }
@@ -247,28 +237,21 @@ public class Cache {
         switch(cacheLine.getBlockState()) {
             case MSI.STATE_MODIFIED:
                 if(transaction == PROCESSOR_WRITE) {
-                    isCreateTransaction = false;
                     result = cacheLineWrite(cacheLine, offset, tag, address);
                 } else if(transaction == PROCESSOR_READ) {
-                    isCreateTransaction = false;
                     result = cacheLineRead(cacheLine,offset, tag, address);
                 }
                 break;
             case MSI.STATE_SHARED:
                 if(transaction == PROCESSOR_WRITE) {
                     result = cacheLineWrite(cacheLine,offset,tag, address);
-                    if(result != 0) result = writeToMemory(cacheLine, offset);
-                    cacheLine.setBlockState(MESI.STATE_MODIFIED);
                 } else if(transaction == PROCESSOR_READ) {
-                    isCreateTransaction = false;
                     result = cacheLineRead(cacheLine,offset, tag, address);
                 }
                 break;
             case MSI.STATE_INVALID:
                 if(transaction == PROCESSOR_WRITE) {
                     result = cacheLineWrite(cacheLine, offset, tag, address);
-                    if(result != 0) result = writeToMemory(cacheLine, offset);
-                    cacheLine.setBlockState(MESI.STATE_MODIFIED);
                 } else if(transaction == PROCESSOR_READ) {
                     result = cacheLineRead(cacheLine,offset, tag, address);
                 }
@@ -282,77 +265,59 @@ public class Cache {
 
     int cacheLineRead(CacheLine cacheLine, int offset, String tag, String address) {
         int result = 0;
-        if(cacheLine.getTag().equals(tag) && cacheLine.getBlockState() != MSI.STATE_INVALID) { //hit
-            result = cacheLine.getDataAtPosition(offset);
-            cacheLine.incUsageCount();
-        } else if(cacheLine.getTag().equals(tag) && isUniProcessor) {
+        if(cacheLine.getTag().equals(tag) && cacheLine.getBlockState() != MSI.STATE_INVALID) { //hit, applies to both uni and mul proc
+            System.out.println("hit");
+            readHit++;
             result = cacheLine.getDataAtPosition(offset);
             cacheLine.incUsageCount();
         } else { //miss
             readMiss++;
+            System.out.println("miss");
             if(isUniProcessor) { // will get from mem and replace
+                memAccess++;
                 cacheLine.updateCacheLine(tag, offset, MSI.STATE_MODIFIED);
-                Bus.insertTransactionOnBus(new OperationPair(Bus.BUS_ACCESS_MEMORY_READ,cacheIdentity,address,cycles));
-                isWaiting = true;
-                expectedCycleToComplete = cycles + 10;
+                currWaitingOperation = new OperationPair(Bus.BUS_ACCESS_MEMORY_READ,cacheIdentity,address,cycles);
+                Bus.insertTransactionOnBus(currWaitingOperation);
             } else {
-                if(isCreateTransaction) {
-                    Bus.insertTransactionOnBus(new OperationPair(Bus.BUS_READ,cacheIdentity,address,cycles));
-                    isWaiting = true;
-                    expectedCycleToComplete = cycles + 1;
-                }
+                currWaitingOperation = new OperationPair(Bus.BUS_READ,cacheIdentity,address,cycles);
+                Bus.insertTransactionOnBus(currWaitingOperation);
             }
+            isWaiting = true;
         }
         return result;
-    }
-
-    int writeToMemory(CacheLine cacheLine, int offset) {
-        accessMemory();
-        cacheLine.setDirtyBit();
-        return 0;
     }
 
     void accessMemory() {
         incMemAccess();
     }
 
-    int readFromMemory(CacheLine cacheLine, int offset) {
-        accessMemory(); //no matter dirty of now, will access mem
-        cacheLine.resetDirtyBit();
-        return 1;
-    }
-
     int cacheLineWrite(CacheLine cacheLine, int offset, String tag, String address) {
         int result = 0;
         if(cacheLine.getTag().equals(tag) && cacheLine.getBlockState() != MSI.STATE_INVALID) {
+            writeHit++;
+            System.out.println("hit");
             cacheLine.setDataAtPosition(offset);
-            if(cacheLine.getBlockState() == MSI.STATE_SHARED)
+            cacheLine.setBlockState(MSI.STATE_MODIFIED);
+            if(!isUniProcessor && cacheLine.getBlockState() == MSI.STATE_SHARED) {
                 Bus.insertTransactionOnBus(new OperationPair(Bus.BUS_READEX,cacheIdentity,address,cycles));
-            cacheLine.setBlockState(MSI.STATE_MODIFIED);
-        } else if(cacheLine.getTag().equals(tag) && isUniProcessor) {
-            cacheLine.setDataAtPosition(offset);
-            cacheLine.setBlockState(MSI.STATE_MODIFIED);
+            }
         } else { //miss : empty or sth is there
             writeMiss++;
+            System.out.println("miss");
             if(isUniProcessor) {
-//                result = writeToMemory(cacheLine, offset);
-                cacheLine.updateCacheLine(tag, offset, MSI.STATE_MODIFIED);
-                Bus.insertTransactionOnBus(new OperationPair(Bus.BUS_ACCESS_MEMORY_WRITE, cacheIdentity, address, cycles));
-                isWaiting = true;
-                expectedCycleToComplete = cycles + 10;
+                memAccess++;
+                currWaitingOperation = new OperationPair(Bus.BUS_ACCESS_MEMORY_WRITE, cacheIdentity, address, cycles);
+                Bus.insertTransactionOnBus(currWaitingOperation);
             } else {
-                if(isCreateTransaction) {
-                    Bus.insertTransactionOnBus(new OperationPair(Bus.BUS_READEX,cacheIdentity,address,cycles));
-                    isWaiting = true;
-                    expectedCycleToComplete = cycles + 1;
-                }
+                currWaitingOperation = new OperationPair(Bus.BUS_READEX,cacheIdentity,address,cycles);
+                Bus.insertTransactionOnBus(currWaitingOperation);
             }
+            isWaiting = true;
         }
         return result;
     }
 
     public void processorWriteCache(String address) {
-        isCreateTransaction = true;
         VisitAddress addr = new VisitAddress(address);
         Vector<CacheLine> cacheSet;
         if(associativity > 1)
@@ -364,13 +329,23 @@ public class Cache {
     }
 
     private void writeCache(Vector<CacheLine> cacheSet, int blockOffSetNumber , int modulo, String tag, String address) {
-        if(cacheSet.size() > associativity) {
+        if(associativity == 1) {
             CacheLine cacheLine = cacheSet.get(modulo);
             int data = transactionsOnCacheByProcessor(cacheLine, blockOffSetNumber, PROCESSOR_WRITE, tag, address);
         } else {
-            for (CacheLine cacheLine : cacheSet) {
-                int data = transactionsOnCacheByProcessor(cacheLine, blockOffSetNumber, PROCESSOR_WRITE, tag, address);
+            int lowestUsed = 1000000;
+            CacheLine cacheLine;
+            for (int i=0; i<cacheSet.size(); i++) {
+                cacheLine = cacheSet.get(i);
+                if(cacheLine.getUsageCount()<lowestUsed)
+                    lowestUsed = i;
+                if(cacheLine.getTag().equals(tag)) {
+                    int data = transactionsOnCacheByProcessor(cacheLine, blockOffSetNumber, PROCESSOR_WRITE, tag, address);
+                    return;
+                }
             }
+            cacheLine = cacheSet.get(lowestUsed);
+            transactionsOnCacheByProcessor(cacheLine, blockOffSetNumber, PROCESSOR_WRITE, tag, address);
         }
     }
 
@@ -477,6 +452,8 @@ public class Cache {
                     cacheLine.setBlockState(MSI.STATE_INVALID);
                 cacheProvideDataSendOnBus();
                 break;
+            case MSI.STATE_INVALID:
+                break;
             default:
                 System.out.println("sth went wrong - msi getdatafromothercaches ... state: "+cacheLine.getBlockState());
                 break;
@@ -512,7 +489,11 @@ public class Cache {
         bw.newLine();
         bw.write("Number of read miss:\t\t\t"+readMiss);
         bw.newLine();
+        bw.write("Number of read hit:\t\t\t"+readHit);
+        bw.newLine();
         bw.write("Number of write miss:\t\t\t"+writeMiss);
+        bw.newLine();
+        bw.write("Number of write hit:\t\t\t"+writeHit);
         bw.newLine();
         bw.flush();
         bw.close();
@@ -530,7 +511,8 @@ public class Cache {
         public VisitAddress(String address) {
             String binaryString = addressBinaryString(address);
             tag = binaryString.substring(0,tagSize-1);
-            int rowNumber = Integer.parseInt(binaryString.substring(tagSize, binaryString.length() - blockOffset - 1), BINARY);
+            String temp = binaryString.substring(tagSize, binaryString.length() - blockOffset - 1);
+            int rowNumber = Integer.parseInt(temp, BINARY);
             blockOffSetNumber = Integer.parseInt(binaryString.substring(binaryString.length() - blockOffset), BINARY);
             set = rowNumber % blockSets;
         }
@@ -538,7 +520,7 @@ public class Cache {
 
 
     public static void main(String[] args) {
-        Cache c = new Cache(8,64,4, MSI.PROTOCOL,1, true);
+        Cache c = new Cache(1,64,4, MSI.PROTOCOL,1, true);
         System.out.println(String.format("%32s",new BigInteger("00123A", 16).toString(2)).replace(' ','0'));
 
     }
