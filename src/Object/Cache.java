@@ -89,7 +89,6 @@ public class Cache {
         if(Bus.busLine.getReceiverProcessorNumberOnBus() == cacheIdentity && Bus.isBusTransactionComplete) {
             System.out.println("\nP"+cacheIdentity+" Receive info do update");
             if(op.getOpsNumber() == Bus.BUS_FLUSH) {
-                Bus.resetExpectedTerminationCycle(cycle,2);
                 Bus.busLine.setReceived();
                 return;
             }
@@ -120,7 +119,7 @@ public class Cache {
 //            if(currWaitingOperation.equals(op))
 //                isWaiting = false;
             System.out.println("proc "+cacheIdentity+" waiting: "+isWaiting);
-        } else if(!isUniProcessor && Bus.busLine.getReceiverProcessorNumberOnBus() != cacheIdentity) { //not equal to the same identity and not uniproc
+        } else if(!isUniProcessor) { //not equal to the same identity and not uniproc
             if(op.getOpsNumber() == Bus.BUS_READ) executeBusRead(op);
             if(op.getOpsNumber() == Bus.BUS_READEX) executeBusReadEx(op);
 //            if(op.getOpsNumber() == Bus.BUS_FLUSH) executeBusFlush(op);

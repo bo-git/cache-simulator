@@ -45,15 +45,21 @@ public class CacheSimulation {
         }
         File[] files = dir.listFiles();
         BufferedReader[] readers = new BufferedReader[files.length];
-        for (int i = 0; i < files.length; i++)
+        for (int i = 0; i < files.length; i++){
+            System.out.println(files[i].getName());
             readers[i] = new BufferedReader(new FileReader(files[i]));
+        }
+
+
 
         String line;
         int globalCycle = 1;
         while(!isAllComplete()) {
             for(int j=0; j<readers.length; j++) {
-                if(isComplete[j]) // this is to continue supporting other processors which have not finish
+                if(isComplete[j]) { // this is to continue supporting other processors which have not finish
                     processors.get(j).cacheSnoopBus(globalCycle);
+                    continue;
+                }
 
                 if(processors.get(j).isCacheBlock()) {
                     System.out.println(j+" waiting");
@@ -83,9 +89,6 @@ public class CacheSimulation {
             }
             Bus.executeBusTransactions(globalCycle);
             globalCycle++;
-
-            if(globalCycle == 100)
-                break;
         }
         log();
     }
@@ -123,8 +126,8 @@ public class CacheSimulation {
         for(boolean b : isComplete) {
             if(!b) return false;
         }
-        if(!Bus.isBusTransactionComplete || Bus.isAllOpsFinished() != 0)
-            return false;
+//        if(!Bus.isBusTransactionComplete || Bus.isAllOpsFinished() != 0)
+//            return false;
         return true;
     }
 
@@ -132,7 +135,7 @@ public class CacheSimulation {
         try {
 //            CacheSimulation cs = new CacheSimulation(args[0], Integer.parseInt(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), Integer.parseInt(args[5]));
 //            cs.run(args[1], args[2]);
-            CacheSimulation cs1 = new CacheSimulation("msi",2,1,4,32);
+            CacheSimulation cs1 = new CacheSimulation("mesi",2,1,4,32);
             cs1.run("fft","1");
         } catch (Exception e) {
             e.printStackTrace();
