@@ -14,7 +14,6 @@ public class Processor {
     int cacheProtocol;
     int cacheState;
     int processorNum;
-    boolean isCacheBlock;
 
     public Processor(int cacheSize, int blockSize, int associativity, int protocol, int procNum, boolean isUniProc) {
         cache = new Cache().getInstance(cacheSize, blockSize, associativity, protocol, procNum, isUniProc);
@@ -44,10 +43,6 @@ public class Processor {
 
     public void createLog() throws IOException{
         cache.createlog();
-    }
-
-    public Cache getCache() {
-        return cache;
     }
 
     public boolean isCacheBlock() {

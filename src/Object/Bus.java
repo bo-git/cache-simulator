@@ -1,5 +1,8 @@
 package Object;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.*;
 
 /**
@@ -10,17 +13,18 @@ public class Bus {
     static final int BUS_READ = 1;
     static final int BUS_READEX = 2;
     static final int BUS_FLUSH = 3;
-    static final int BUS_ACCESS_MEMORY_WRITE = 4;
-    static final int BUS_ACCESS_MEMORY_READ = 5;
+//    static final int BUS_ACCESS_MEMORY_WRITE = 4;
+//    static final int BUS_ACCESS_MEMORY_READ = 5;
+    static final String LOG_PATH = "logs/Bus.txt";
 
-    static int numOfProc;
-    static int dataOnBus;
-    static boolean isBlocked;
-    static boolean isBusTransactionComplete;
+    static int numOfProc, dataOnBus;
+    static boolean isBlocked, isHighPriorityOps;
+    public static boolean isBusTransactionComplete;
     static Vector<Processor> processors;
     static Queue<List<OperationPair>> busOperations;
     static List<OperationPair> cycleOps;
     static int expectedTerminationCycle;
+    static OperationPair highPriorityOps;
 
     static BusLine busLine; //where cache snoops, check for results
 
@@ -34,6 +38,7 @@ public class Bus {
     }
 
     public static void accessMemory() { //set data early, ensure flow
+        dataOnBus++;
         busLine.setResult(true);
     }
 
@@ -46,8 +51,8 @@ public class Bus {
         cycleOps.add(op);
     }
 
-    public static boolean isBusBlocked() {
-        return isBlocked;
+    public static int isAllOpsFinished() {
+        return busOperations.size();
     }
 
     public static boolean checkBusBlock() {
@@ -68,54 +73,84 @@ public class Bus {
         else
             isBusTransactionComplete = false;
 
-//        if(!busOperations.isEmpty()) {
-//            System.out.print("@ cycle "+currCycle+" ,tobe executed in seq: ");
-//            for(List<OperationPair> i : busOperations) {
-//                System.out.print("[ ");
-//                for(OperationPair op : i) {
-//                    System.out.print(op.getOpsNumber()+" "+"from "+op.getInitiatorNumber()+" ");
-//                }
-//                System.out.println("]");
-//            }
-//        }
-        if(!busOperations.isEmpty() && !checkBusBlock()) {
-            busLine = new BusLine();
-            OperationPair op;
-            List<OperationPair> busCycleOps = busOperations.peek();
-            int index = random(busCycleOps.size()-1);
-            if(busCycleOps.size() > 1) {
-                op = busCycleOps.get(index);
-                busCycleOps.remove(index);
-            } else
-                op = busOperations.poll().get(0);
-//            System.out.println("decide to execute : "+op.getOpsNumber()+" from "+op.getInitiatorNumber());
-            setExpectedTerminationCycle(op.getOpsNumber(), currCycle);
-            busLine.setBusLine(op);
-
-
-            if(op.getOpsNumber() == BUS_ACCESS_MEMORY_READ ||
-                    op.getOpsNumber() == BUS_ACCESS_MEMORY_WRITE ||
-                    op.getOpsNumber() == BUS_FLUSH)
-                accessMemory();
-
-        }else {
-//            System.out.println("bus block: "+isBusBlocked()+"  ops count: "+busOperations.size());
+        if(!busOperations.isEmpty()) {
+            System.out.print("\n@ cycle "+currCycle+" ,tobe executed in seq: ");
+            for(List<OperationPair> i : busOperations) {
+                System.out.print("[ ");
+                for(OperationPair op : i) {
+                    System.out.print(op.getOpsNumber()+" "+"from "+op.getInitiatorNumber()+" ");
+                }
+                System.out.println("]");
+            }
         }
+        if(!checkBusBlock()) {
+            if (isHighPriorityOps) {
+                busLine.setBusLine(highPriorityOps);
+                busLine.setResult(true);
+                isHighPriorityOps = false;
+                setExpectedTerminationCycle(highPriorityOps.getOpsNumber(), currCycle);
+                System.out.println("decide to execute : " + highPriorityOps.getOpsNumber() + " from " + highPriorityOps.getInitiatorNumber());
+            } else if (!busOperations.isEmpty()) {
+                busLine = new BusLine();
+                OperationPair op;
+                List<OperationPair> busCycleOps = busOperations.peek();
+                int index = random(busCycleOps.size() - 1);
+                if (busCycleOps.size() > 1) {
+                    op = busCycleOps.get(index);
+                    busCycleOps.remove(index);
+                } else
+                    op = busOperations.poll().get(0);
+                System.out.println("decide to execute : " + op.getOpsNumber() + " from " + op.getInitiatorNumber());
+                busLine.setBusLine(op);
+                setExpectedTerminationCycle(op.getOpsNumber(), currCycle);
+            }
+//            if(op.getOpsNumber() == BUS_ACCESS_MEMORY_READ ||
+//                    op.getOpsNumber() == BUS_ACCESS_MEMORY_WRITE ||
+//                    op.getOpsNumber() == BUS_FLUSH)
+//                accessMemory();
+        }
+//        }else {
+////            System.out.println("bus block: "+isBusBlocked()+"  ops count: "+busOperations.size());
+//        }
+    }
+
+    public static void continueBusReadorEx(int cycle) {
+        expectedTerminationCycle = cycle + 6;
+        accessMemory();
+    }
+
+    public static void resetExpectedTerminationCycle(int cycle, int time) {
+        expectedTerminationCycle = cycle + time;
+    }
+
+    public static void setHighPriorityOps(OperationPair op) {
+        isHighPriorityOps = true;
+        highPriorityOps = op;
     }
 
     public static void setExpectedTerminationCycle(int opsNum, int cycle) {
-        if(opsNum == BUS_ACCESS_MEMORY_READ ||
-                opsNum == BUS_ACCESS_MEMORY_WRITE ||
-                opsNum == BUS_FLUSH)
-            expectedTerminationCycle = cycle + 10;
-        else if(opsNum == BUS_READ || opsNum == BUS_READEX)
+        if((opsNum == BUS_READ || opsNum == BUS_READEX) && numOfProc > 1)
             expectedTerminationCycle = cycle + 2;
+        else if (opsNum == BUS_FLUSH && numOfProc > 1)
+            expectedTerminationCycle = cycle + 8; //one cycle is used to supply data
+        else if (numOfProc == 1) {
+            accessMemory();
+            expectedTerminationCycle = cycle + 10;
+        }
         isBusTransactionComplete = false;
     }
 
     static int random(int size) {
         Random r = new Random();
         return r.nextInt(size+1);
+    }
+
+    public static void log() throws IOException {
+        BufferedWriter bw = new BufferedWriter(new FileWriter(LOG_PATH, false));
+        bw.write("Number of data:\t\t\t"+dataOnBus);
+        bw.newLine();
+        bw.flush();
+        bw.close();
     }
 
     public static void main(String[] args) {
@@ -161,6 +196,10 @@ class OperationPair implements Comparable<OperationPair> {
 
     public int getPrevOps() {
         return prevOpNumber;
+    }
+
+    public void setPrevOpNumber(int opNum) {
+        this.prevOpNumber = opNum;
     }
 
     @Override

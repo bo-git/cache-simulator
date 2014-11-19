@@ -18,6 +18,7 @@ public class CacheLine {
         tag = tagString;
         validBit = 0;
         dirtyBit = 0;
+        usageCount = 0;
         blockState = state;
     }
 
@@ -61,10 +62,15 @@ public class CacheLine {
 
     public int getUsageCount() { return usageCount; }
 
+    public void setUsageCount(){
+        usageCount = 1;
+    }
+
     public void updateCacheLine(String tag, int offset, int blockState) {
         this.tag = tag;
         data[offset] = 1;
         this.blockState = blockState;
         this.usageCount = 1;
     }
+
 }
