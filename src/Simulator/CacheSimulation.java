@@ -62,7 +62,7 @@ public class CacheSimulation {
                 }
 
                 if(processors.get(j).isCacheBlock()) {
-                    System.out.println(j+" waiting");
+//                    System.out.println(j+" waiting");
                     processors.get(j).cacheSnoopBus(globalCycle);
                     continue;
                 }
@@ -99,13 +99,13 @@ public class CacheSimulation {
                 processors.get(index).fetch();
                 break;
             case 2:
-                System.out.println("\nrunning proc: "+index);
-                System.out.print("read @ addr: "+ address + "  ");
+//                System.out.println("\nrunning proc: "+index);
+//                System.out.print("read @ addr: "+ address + "  ");
                 processors.get(index).load(address, currCycle);
                 break;
             case 3:
-                System.out.println("\nrunning proc: "+index);
-                System.out.print("write @ addr: "+ address+ "  ");
+//                System.out.println("\nrunning proc: "+index);
+//                System.out.print("write @ addr: "+ address+ "  ");
                 processors.get(index).store(address, currCycle);
                 break;
             default:
@@ -135,8 +135,12 @@ public class CacheSimulation {
         try {
 //            CacheSimulation cs = new CacheSimulation(args[0], Integer.parseInt(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), Integer.parseInt(args[5]));
 //            cs.run(args[1], args[2]);
+            long beginOne = System.currentTimeMillis();
             CacheSimulation cs1 = new CacheSimulation("mesi",2,1,4,32);
-            cs1.run("fft","1");
+            cs1.run("fft","2");
+            long endOne = System.currentTimeMillis();
+            long time = endOne - beginOne;
+            System.out.println(time);
         } catch (Exception e) {
             e.printStackTrace();
         }

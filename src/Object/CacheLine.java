@@ -38,24 +38,8 @@ public class CacheLine {
         return blockState;
     }
 
-    public boolean isDirtyBit() {
-        return (dirtyBit == 1) ? true : false;
-    }
-
-    public void resetDirtyBit() {
-        this.dirtyBit = 0;
-    }
-
-    public void setDirtyBit() {
-        this.dirtyBit = 1;
-    }
-
     public String getTag() {
         return tag;
-    }
-
-    public void setTag(String s) {
-        tag = s;
     }
 
     public void incUsageCount() { usageCount ++; }

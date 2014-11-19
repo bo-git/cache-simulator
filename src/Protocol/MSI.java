@@ -1,7 +1,5 @@
 package Protocol;
 
-import Object.CacheLine;
-
 public class MSI {
 
     public static final int PROTOCOL = 99;
