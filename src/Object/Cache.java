@@ -329,6 +329,7 @@ public class Cache {
                 Bus.insertTransactionOnBus(new OperationPair(Bus.BUS_READEX,cacheIdentity,address,cycles));
                 isWaiting = true;
                 cacheLine.setBlockState(MSI.STATE_SHARED);
+                Bus.busLine.setResult(true);
             }
             cacheLine.setDataAtPosition(offset);
             int origAge = cacheLine.getUsageCount();
@@ -526,8 +527,7 @@ public class Cache {
     }
 
     void cacheFlushDataOntoBus() {
-        Bus.setHighPriorityOps(new OperationPair(Bus.BUS_FLUSH, cacheIdentity,"flushing",cycles));
-        Bus.resetExpectedTerminationCycle(cycles, 1);
+        Bus.addFlushToFrontOfQueue(new OperationPair(Bus.BUS_FLUSH, cacheIdentity,"flushing",cycles));
         Bus.busLine.setResult(true);
     }
 
