@@ -5,12 +5,14 @@ import Object.Processor;
 import Object.Bus;
 import Protocol.MESI;
 import Protocol.MSI;
+import Protocol.MOESI;
 
 import java.io.*;
 
 public class CacheSimulation {
 
     static final String MESI_PROTOCOL = "mesi";
+    static final String MOESI_PROTOCOL = "moesi";
     static final String SPACE = " ";
     static final String TRACE = "Trace logs/";
 
@@ -26,6 +28,8 @@ public class CacheSimulation {
             System.out.println(i);
             if(protocol.equalsIgnoreCase(MESI_PROTOCOL))
                 processors.add(new Processor(cacheSize, blkSize,associativity, MESI.PROTOCOL , i, isUniProcessor, filename));
+            else if(protocol.equalsIgnoreCase(MOESI_PROTOCOL))
+                processors.add(new Processor(cacheSize, blkSize,associativity, MOESI.PROTOCOL , i, isUniProcessor, filename));
             else
                 processors.add(new Processor(cacheSize, blkSize,associativity, MSI.PROTOCOL , i, isUniProcessor, filename));
         }
@@ -156,7 +160,7 @@ public class CacheSimulation {
             String[] bm = {"fft","weather"};
 
             long beginOne = System.currentTimeMillis();
-            CacheSimulation cs1 = new CacheSimulation("msi",2,1,4,32," msi 2 1 4 32 fft");
+            CacheSimulation cs1 = new CacheSimulation("moesi",2,1,4,32," moesi 2 1 4 32 fft");
             cs1.run("fft",Integer.toString(2));
             long endOne = System.currentTimeMillis();
             long time = endOne - beginOne;

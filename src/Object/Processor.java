@@ -1,6 +1,7 @@
 package Object;
 
 import Protocol.MESI;
+import Protocol.MOESI;
 import Protocol.MSI;
 
 import java.io.IOException;
@@ -21,6 +22,8 @@ public class Processor {
         processorNum = procNum;
         if(protocol == MESI.PROTOCOL)
             cacheState = MESI.STATE_INVALID;
+        else if(protocol == MOESI.PROTOCOL)
+            cacheState = MOESI.STATE_INVALID;
         else
             cacheState = MSI.STATE_INVALID;
     }

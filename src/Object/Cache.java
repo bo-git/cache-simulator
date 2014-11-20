@@ -1,6 +1,7 @@
 package Object;
 
 import Protocol.MESI;
+import Protocol.MOESI;
 import Protocol.MSI;
 
 import java.io.BufferedWriter;
@@ -17,6 +18,7 @@ public class Cache {
     public static final int BUS_READ_EXCLUSIVE = 100;
     public static final int PROCESSOR_READ = 101;
     public static final int PROCESSOR_WRITE = 102;
+    public static final int BUS_UPGRADE = 103;
     public static final String LOG_PATH = "logs/Processor";
 
     private int cacheSize, numOfBlocks, blockSize, associativity, blockSets;
@@ -86,36 +88,32 @@ public class Cache {
 
     public void snoopBus(int cycle) {
         setClockCycles(cycle);
-//        System.out.print("Processor: "+cacheIdentity+"  snooping.... ");
         OperationPair op = Bus.busLine.getOp();
         if(op == null) return;
         if(Bus.busLine.getReceiverProcessorNumberOnBus() == cacheIdentity && Bus.isBusTransactionComplete) {
-//            System.out.println("\nP"+cacheIdentity+" Receive info do update");
             if(op.getOpsNumber() == Bus.BUS_FLUSH) {
                 Bus.busLine.setReceived();
                 return;
             }
             if(Bus.busLine.getResultOnBus()) { //true if busRead, busReadEx reply && access mem
-//                System.out.println("someone reply.. update");
                 updateCacheBlockAfterSnooping(op);
                 isWaiting = false;
                 Bus.busLine.setReceived();
             } else {//no one has it, have to access mem no matter read or write
-//                System.out.println("no reply continue the 7 cycles");
                 memAccess++;
-                //tell the bus continue execute 7 cycles
-                if(protocol == MESI.PROTOCOL && op.getOpsNumber() == Bus.BUS_READ)
+                if(protocol != MSI.PROTOCOL && op.getOpsNumber() == Bus.BUS_READ)
                     Bus.busLine.getOp().setPrevOpNumber(Bus.BUS_READ);
-
                 Bus.continueBusReadorEx(cycle);
                 isWaiting = true;
             }
-//        } else if(!isUniProcessor && Bus.busLine.getReceiverProcessorNumberOnBus() != cacheIdentity) { //not equal to the same identity and not uniproc
         } else if(!isUniProcessor) { //not equal to the same identity and not uniproc
             if(lastSnoopNCheckOp.equals(op))
                 return;
-            if(op.getOpsNumber() == Bus.BUS_READ) executeBusRead(op);
-            if(op.getOpsNumber() == Bus.BUS_READEX) executeBusReadEx(op);
+            if(op.getOpsNumber() != Bus.BUS_FLUSH)
+                executeBusTransactions(op, op.getOpsNumber());
+//            if(op.getOpsNumber() == Bus.BUS_READ) executeBusRead(op);
+//            if(op.getOpsNumber() == Bus.BUS_READEX) executeBusReadEx(op);
+//            if(protocol == MOESI.PROTOCOL && op.getOpsNumber() == Bus.BUS_UPGRADE) executeBusReadUpgrade(op);
             lastSnoopNCheckOp = op;
         }
     }
@@ -125,9 +123,7 @@ public class Cache {
             return; //don't have to care about flush
         }
         VisitAddress addr = new VisitAddress(op.getAddress());
-
         Vector<CacheLine> cacheSet;
-        //System.out.println("associativity is "+associativity);
         if(associativity > 1)
             cacheSet = cacheLines.get(addr.set);
         else
@@ -140,11 +136,11 @@ public class Cache {
                 state = MSI.STATE_MODIFIED;
         } else if(op.getOpsNumber() == Bus.BUS_READEX)
             state = MSI.STATE_MODIFIED;
+        else if(op.getOpsNumber() == Bus.BUS_UPGRADE)
+            state = MOESI.STATE_MODIFIED;
 
-        if(op.getPrevOps() == Bus.BUS_READ && protocol == MESI.PROTOCOL) //handles special case for mesi
+        if(op.getPrevOps() == Bus.BUS_READ && protocol != MSI.PROTOCOL) //handles special case for mesi & moesi
             state = MESI.STATE_EXCLUSIVE;
-
-        //System.out.println("state : "+state);
 
         if(associativity == 1) { // 1-way set associative
             CacheLine cacheLine = cacheSet.get(addr.set);
@@ -160,12 +156,10 @@ public class Cache {
                 cacheLine = cacheSet.get(i);
                 if(cacheLine.getUsageCount() == cacheSet.size())
                     indexOfLeastUse = i;
-                //System.out.print("cacheLine info: "+cacheLine.getTag()+"(tag)  count: "+cacheLine.getUsageCount());
                 if(cacheLine.getTag().equals(addr.tag) || cacheLine.getTag().isEmpty()) {
                     beingAccessed = i;
                     isAddedToCache = true;
                     origAge = cacheLine.getUsageCount();
-                    //System.out.println(" found position, update");
                     cacheLine.updateCacheLine(addr.tag, addr.blockOffSetNumber, state);
                     break;
                 }
@@ -319,27 +313,24 @@ public class Cache {
     int cacheLineWrite(Vector<CacheLine> cacheSet, int cacheLineIndex, int offset, String tag, String address) {
         int result = 0;
         CacheLine cacheLine = cacheSet.get(cacheLineIndex);
-//        System.out.println("****** write: cache state: "+ cacheLine.getBlockState());
         if(cacheLine.getTag().equals(tag) && cacheLine.getBlockState() != MSI.STATE_INVALID) {
             writeHit++;
-//            System.out.print("hit   ");
-//            System.out.println("change state from "+cacheLine.getBlockState() +"  to modified");
-            cacheLine.setBlockState(MSI.STATE_MODIFIED);
-            if(!isUniProcessor && cacheLine.getBlockState() == MSI.STATE_SHARED) { //99 here is the optimizat => differen ops
-                Bus.insertTransactionOnBus(new OperationPair(Bus.BUS_READEX,cacheIdentity,address,cycles));
+            if(!isUniProcessor && (cacheLine.getBlockState() == MSI.STATE_SHARED || cacheLine.getBlockState() == MOESI.STATE_OWNED)) {
+                if(protocol == MOESI.PROTOCOL) {
+                    Bus.insertTransactionOnBus(new OperationPair(Bus.BUS_UPGRADE,cacheIdentity,address,cycles));
+                } else {
+                    Bus.insertTransactionOnBus(new OperationPair(Bus.BUS_READEX,cacheIdentity,address,cycles));
+                }
                 isWaiting = true;
-                cacheLine.setBlockState(MSI.STATE_SHARED);
                 Bus.busLine.setResult(true);
             }
             cacheLine.setDataAtPosition(offset);
             int origAge = cacheLine.getUsageCount();
             cacheLine.setUsageCount();
-//            cacheLine.updateCacheLine(tag,offset,MSI.STATE_MODIFIED);
             reorderBlkBasedOnLRU(cacheSet, cacheLineIndex, origAge);
             result = 1;
         } else { //miss : empty or sth is there
             writeMiss++;
-//            System.out.println("miss");
             if(isUniProcessor) memAccess++;
             currWaitingOperation = new OperationPair(Bus.BUS_READEX,cacheIdentity,address,cycles);
             Bus.insertTransactionOnBus(currWaitingOperation);
@@ -377,38 +368,38 @@ public class Cache {
         }
     }
 
-    public int executeBusRead(OperationPair op) {
-        VisitAddress address = new VisitAddress(op.getAddress());
-        Vector<CacheLine> cacheSet;
-        boolean isFound = false;
-        if(associativity > 1)
-            cacheSet = cacheLines.get(address.set);
-        else
-            cacheSet = cacheLines.get(0);
+//    public int executeBusRead(OperationPair op) {
+//        VisitAddress address = new VisitAddress(op.getAddress());
+//        Vector<CacheLine> cacheSet;
+//        boolean isFound = false;
+//        if(associativity > 1)
+//            cacheSet = cacheLines.get(address.set);
+//        else
+//            cacheSet = cacheLines.get(0);
+//
+//        if(associativity == 1) { // 1way associative
+//            CacheLine cacheLine = cacheSet.get(address.set);
+//            if(cacheLine.getTag().equals(address.tag))
+//                return transactionsOnCacheByBus(cacheLine, BUS_READ);
+//        } else {
+//            int chosenCache = -1;
+//            int origAge = -1;
+//            for (int i = 0; i < cacheSet.size(); i++) {
+//                CacheLine cacheLine = cacheSet.get(i);
+//                if(cacheLine.getTag().equals(address.tag)){
+//                    isFound = true;
+//                    chosenCache = i;
+//                    origAge = cacheLine.getUsageCount();
+//                    transactionsOnCacheByBus(cacheLine, BUS_READ);
+//                }
+//            }
+//            reorderBlkBasedOnLRU(cacheSet,chosenCache, origAge);
+//        }
+////        System.out.println("reply to bus read : "+isFound);
+//        return 0;
+//    }
 
-        if(associativity == 1) { // 1way associative
-            CacheLine cacheLine = cacheSet.get(address.set);
-            if(cacheLine.getTag().equals(address.tag))
-                return transactionsOnCacheByBus(cacheLine, BUS_READ);
-        } else {
-            int chosenCache = -1;
-            int origAge = -1;
-            for (int i = 0; i < cacheSet.size(); i++) {
-                CacheLine cacheLine = cacheSet.get(i);
-                if(cacheLine.getTag().equals(address.tag)){
-                    isFound = true;
-                    chosenCache = i;
-                    origAge = cacheLine.getUsageCount();
-                    transactionsOnCacheByBus(cacheLine, BUS_READ);
-                }
-            }
-            reorderBlkBasedOnLRU(cacheSet,chosenCache, origAge);
-        }
-//        System.out.println("reply to bus read : "+isFound);
-        return 0;
-    }
-
-    int executeBusReadEx(OperationPair op) {
+    int executeBusTransactions(OperationPair op, int transaction) {
         int data = 0;
         VisitAddress addr = new VisitAddress(op.getAddress());
         Vector<CacheLine> cacheSet;
@@ -421,7 +412,7 @@ public class Cache {
         if(associativity == 1) {
             CacheLine cacheLine = cacheSet.get(addr.set);
             if(cacheLine.getTag().equals(addr.tag))
-                return transactionsOnCacheByBus(cacheLine, BUS_READ_EXCLUSIVE);
+                return transactionsOnCacheByBus(cacheLine, transaction);
 
         } else {
             int chosenCache = -1;
@@ -432,7 +423,7 @@ public class Cache {
                     isFound = true;
                     chosenCache = i;
                     origAge = cacheLine.getUsageCount();
-                    transactionsOnCacheByBus(cacheLine, BUS_READ_EXCLUSIVE);
+                    transactionsOnCacheByBus(cacheLine, transaction);
                 }
             }
             reorderBlkBasedOnLRU(cacheSet,chosenCache, origAge);
@@ -441,13 +432,49 @@ public class Cache {
         return data;
     }
 
+//    int executeBusReadEx(OperationPair op) {
+//        int data = 0;
+//        VisitAddress addr = new VisitAddress(op.getAddress());
+//        Vector<CacheLine> cacheSet;
+//        boolean isFound = false;
+//        if(associativity > 1)
+//            cacheSet = cacheLines.get(addr.set);
+//        else
+//            cacheSet = cacheLines.get(0);
+//
+//        if(associativity == 1) {
+//            CacheLine cacheLine = cacheSet.get(addr.set);
+//            if(cacheLine.getTag().equals(addr.tag))
+//                return transactionsOnCacheByBus(cacheLine, BUS_READ_EXCLUSIVE);
+//
+//        } else {
+//            int chosenCache = -1;
+//            int origAge = 0;
+//            for (int i = 0; i < cacheSet.size(); i++) {
+//                CacheLine cacheLine = cacheSet.get(i);
+//                if(cacheLine.getTag().equals(addr.tag)){
+//                    isFound = true;
+//                    chosenCache = i;
+//                    origAge = cacheLine.getUsageCount();
+//                    transactionsOnCacheByBus(cacheLine, BUS_READ_EXCLUSIVE);
+//                }
+//            }
+//            reorderBlkBasedOnLRU(cacheSet,chosenCache, origAge);
+//        }
+////        System.out.println("reply to busread ex : "+isFound);
+//        return data;
+//    }
+
     int transactionsOnCacheByBus(CacheLine cacheLine, int transaction) {
         int result;
         if(protocol == MESI.PROTOCOL) {
             result = mesiBusTransactions(cacheLine, transaction);
+        } else if(protocol == MOESI.PROTOCOL){
+            result = moesiBusTransactions(cacheLine, transaction);
         } else {
             result = msiBusTransactions(cacheLine, transaction);
         }
+
         return result;
     }
 
@@ -460,26 +487,64 @@ public class Cache {
                 else if(transaction == BUS_READ_EXCLUSIVE)
                     cacheLine.setBlockState(MESI.STATE_INVALID);
                 cacheLine.setUsageCount();
-                //System.out.println("provide data!! from state "+MESI.STATE_EXCLUSIVE+" to "+cacheLine.getBlockState());
                 cacheFlushDataOntoBus();
-//                Bus.insertTransactionOnBus(new OperationPair(Bus.BUS_FLUSH,cacheIdentity,"dummy",cycles));
-//                cacheProvideDataSendOnBus();
                 break;
             case MESI.STATE_EXCLUSIVE:
                 if(transaction == BUS_READ)
                     cacheLine.setBlockState(MESI.STATE_SHARED);
                 else if(transaction == BUS_READ_EXCLUSIVE)
                     cacheLine.setBlockState(MESI.STATE_INVALID);
-                //System.out.println("provide data!! from state "+MESI.STATE_EXCLUSIVE+" to "+cacheLine.getBlockState());
                 cacheLine.setUsageCount();
-//                Bus.insertTransactionOnBus(new OperationPair(Bus.BUS_FLUSH,cacheIdentity,"dummy",cycles));
                 cacheProvideDataSendOnBus();
                 break;
             case MESI.STATE_SHARED:
                 if(transaction == BUS_READ_EXCLUSIVE)
                     cacheLine.setBlockState(MESI.STATE_INVALID);
                 cacheLine.setUsageCount();
-//                cacheProvideDataSendOnBus();
+                break;
+            default:
+                //System.out.println("sth went wrong - mesi getdatafromothercaches .. state: " + cacheLine.getBlockState());
+                break;
+        }
+        return result;
+    }
+
+    int moesiBusTransactions(CacheLine cacheLine, int transaction) {
+        int result = 0;
+        switch(cacheLine.getBlockState()) {
+            case MOESI.STATE_MODIFIED:
+                if(transaction == BUS_READ) {
+                    cacheLine.setBlockState(MOESI.STATE_OWNED);
+                    cacheProvideDataSendOnBus(); //transfer
+                } else if(transaction == BUS_READ_EXCLUSIVE) {
+                    cacheLine.setBlockState(MOESI.STATE_INVALID);
+                    cacheFlushDataOntoBus();
+                }
+                cacheLine.setUsageCount();
+                break;
+            case MOESI.STATE_OWNED:
+                if(transaction == BUS_READ) {
+                    cacheProvideDataSendOnBus(); //transfer
+                } else if(transaction == BUS_READ_EXCLUSIVE) {
+                    cacheLine.setBlockState(MOESI.STATE_INVALID);
+                    cacheFlushDataOntoBus();
+                } else if(transaction == BUS_UPGRADE) {
+                    cacheLine.setBlockState(MOESI.STATE_INVALID);
+                }
+                cacheLine.setUsageCount();
+                break;
+            case MOESI.STATE_EXCLUSIVE:
+                if(transaction == BUS_READ) {
+                    cacheLine.setBlockState(MESI.STATE_SHARED);
+                    cacheProvideDataSendOnBus();
+                } else if(transaction == BUS_READ_EXCLUSIVE)
+                    cacheLine.setBlockState(MESI.STATE_INVALID);
+                cacheLine.setUsageCount();
+                break;
+            case MOESI.STATE_SHARED:
+                if(transaction == BUS_READ_EXCLUSIVE || transaction == BUS_UPGRADE)
+                    cacheLine.setBlockState(MESI.STATE_INVALID);
+                cacheLine.setUsageCount();
                 break;
             default:
                 //System.out.println("sth went wrong - mesi getdatafromothercaches .. state: " + cacheLine.getBlockState());

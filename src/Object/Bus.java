@@ -13,6 +13,7 @@ public class Bus {
     static final int BUS_READ = 1;
     static final int BUS_READEX = 2;
     static final int BUS_FLUSH = 3;
+    static final int BUS_UPGRADE = 4;
     static final String LOG_PATH = "logs/Bus";
 
     static int numOfProc, dataOnBus;
@@ -121,7 +122,7 @@ public class Bus {
     }
 
     public static void setExpectedTerminationCycle(int opsNum, int cycle) {
-        if((opsNum == BUS_READ || opsNum == BUS_READEX) && numOfProc > 1)
+        if((opsNum == BUS_READ || opsNum == BUS_READEX || opsNum == BUS_UPGRADE) && numOfProc > 1)
             expectedTerminationCycle = cycle + 2;
         else if (opsNum == BUS_FLUSH && numOfProc > 1) {
             accessMemory();
