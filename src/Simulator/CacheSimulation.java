@@ -18,21 +18,21 @@ public class CacheSimulation {
     String[] operationQueue;
     boolean[] isComplete;
 
-    public CacheSimulation(String protocol, int numProcessor, int cacheSize, int associativity, int blkSize) {
+    public CacheSimulation(String protocol, int numProcessor, int cacheSize, int associativity, int blkSize, String filename) {
         processors = new Vector<Processor>();
         boolean isUniProcessor = true;
         if(numProcessor > 1) isUniProcessor = false;
         for (int i = 0; i < numProcessor; i++) {
             System.out.println(i);
             if(protocol.equalsIgnoreCase(MESI_PROTOCOL))
-                processors.add(new Processor(cacheSize, blkSize,associativity, MESI.PROTOCOL , i, isUniProcessor));
+                processors.add(new Processor(cacheSize, blkSize,associativity, MESI.PROTOCOL , i, isUniProcessor, filename));
             else
-                processors.add(new Processor(cacheSize, blkSize,associativity, MSI.PROTOCOL , i, isUniProcessor));
+                processors.add(new Processor(cacheSize, blkSize,associativity, MSI.PROTOCOL , i, isUniProcessor, filename));
         }
         System.out.println(processors.size());
         operationQueue = new String[numProcessor];
         isComplete = new boolean[numProcessor];
-        Bus.initBus(processors);
+        Bus.initBus(processors, filename);
 
     }
 
@@ -45,18 +45,24 @@ public class CacheSimulation {
         }
         File[] files = dir.listFiles();
         BufferedReader[] readers = new BufferedReader[files.length];
-        for (int i = 0; i < files.length; i++)
+        for (int i = 0; i < files.length; i++){
+            System.out.println(files[i].getName());
             readers[i] = new BufferedReader(new FileReader(files[i]));
+        }
+
+
 
         String line;
         int globalCycle = 1;
         while(!isAllComplete()) {
             for(int j=0; j<readers.length; j++) {
-                if(isComplete[j]) // this is to continue supporting other processors which have not finish
+                if(isComplete[j]) { // this is to continue supporting other processors which have not finish
                     processors.get(j).cacheSnoopBus(globalCycle);
+                    continue;
+                }
 
                 if(processors.get(j).isCacheBlock()) {
-                    System.out.println(j+" waiting");
+//                    System.out.println(j+" waiting");
                     processors.get(j).cacheSnoopBus(globalCycle);
                     continue;
                 }
@@ -83,11 +89,8 @@ public class CacheSimulation {
             }
             Bus.executeBusTransactions(globalCycle);
             globalCycle++;
-
-            if(globalCycle == 100)
-                break;
         }
-        log();
+
     }
 
     void execute(String instruction, String address, int index, int currCycle) {
@@ -96,13 +99,13 @@ public class CacheSimulation {
                 processors.get(index).fetch();
                 break;
             case 2:
-                System.out.println("\nrunning proc: "+index);
-                System.out.print("read @ addr: "+ address + "  ");
+//                System.out.println("\nrunning proc: "+index);
+//                System.out.print("read @ addr: "+ address + "  ");
                 processors.get(index).load(address, currCycle);
                 break;
             case 3:
-                System.out.println("\nrunning proc: "+index);
-                System.out.print("write @ addr: "+ address+ "  ");
+//                System.out.println("\nrunning proc: "+index);
+//                System.out.print("write @ addr: "+ address+ "  ");
                 processors.get(index).store(address, currCycle);
                 break;
             default:
@@ -112,19 +115,19 @@ public class CacheSimulation {
 //        System.out.println();
     }
 
-    void log() throws IOException{
+    void log(long time) throws IOException{
         for(Processor processor : processors) {
             processor.createLog();
         }
-        Bus.log();
+        Bus.log(time);
     }
 
     boolean isAllComplete() {
         for(boolean b : isComplete) {
             if(!b) return false;
         }
-        if(!Bus.isBusTransactionComplete || Bus.isAllOpsFinished() != 0)
-            return false;
+//        if(!Bus.isBusTransactionComplete || Bus.isAllOpsFinished() != 0)
+//            return false;
         return true;
     }
 
@@ -132,8 +135,44 @@ public class CacheSimulation {
         try {
 //            CacheSimulation cs = new CacheSimulation(args[0], Integer.parseInt(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), Integer.parseInt(args[5]));
 //            cs.run(args[1], args[2]);
-            CacheSimulation cs1 = new CacheSimulation("msi",2,1,4,32);
-            cs1.run("fft","1");
+            int[] processors = {1,2};
+            int[] cacheSize = {1,8,32};
+            int[] asso = {1,2,4};
+            int[] blkSize = {8,64,128};
+            String[] proto = {"msi","mesi"};
+            String[] bm = {"fft","weather"};
+
+            for(String f:bm) {
+                for(String p:proto) {
+                    for(int aso : asso) {
+                        for(int b: blkSize) {
+                            for(int c: cacheSize) {
+                                for(int pro : processors) {
+                                    String file = p+" "+pro+" "+c+" "+aso+" "+b+" "+f;
+                                    long beginOne = System.currentTimeMillis();
+                                    CacheSimulation cs1 = new CacheSimulation(p,pro,c,aso,b,file);
+                                    cs1.run(f,Integer.toString(pro));
+                                    long endOne = System.currentTimeMillis();
+                                    long time = endOne - beginOne;
+                                    cs1.log(time);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            //4 and 8 not done
+
+//            String file = p+" "+pro+" "+c+" "+aso+" "+b;
+//            long beginOne = System.currentTimeMillis();
+//            CacheSimulation cs1 = new CacheSimulation("msi",2,1,2,32," msi 2 1 2 32 fft");
+//            cs1.run("test",Integer.toString(1));
+//            long endOne = System.currentTimeMillis();
+//            long time = endOne - beginOne;
+//            cs1.log(time);
+
+
+
         } catch (Exception e) {
             e.printStackTrace();
         }
