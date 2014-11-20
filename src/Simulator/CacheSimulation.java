@@ -52,8 +52,10 @@ public class CacheSimulation {
 
 
 
-        String line;
+        String line = null;
         int globalCycle = 1;
+        int lineRead = 0;
+        int k = 1;
         while(!isAllComplete()) {
             for(int j=0; j<readers.length; j++) {
                 if(isComplete[j]) { // this is to continue supporting other processors which have not finish
@@ -68,13 +70,19 @@ public class CacheSimulation {
                 }
                 line = operationQueue[j];
                 operationQueue[j] = null;
-                if(line == null || line.isEmpty())
+                if(line == null || line.isEmpty()) {
                     line = readers[j].readLine();
+                    lineRead++;
+                }
+
                 if(line != null) {
                     String[] info = line.split(SPACE);
                     String anotherInst = null;
-                    if(info[0].equals("0"))
+                    if(info[0].equals("0")) {
+                        lineRead++;
                         anotherInst = readers[j].readLine();
+                    }
+
                     execute(info[0],info[1],j, globalCycle); //the first inst
                     if(anotherInst != null && anotherInst.charAt(0) == '0')
                         operationQueue[j] = anotherInst;
@@ -82,13 +90,17 @@ public class CacheSimulation {
                         info = anotherInst.split(SPACE);
                         execute(info[0],info[1],j, globalCycle); //the second instru
                     }
-
                 } else {
                     isComplete[j] = true;
                 }
             }
-            Bus.executeBusTransactions(globalCycle);
+            Bus.executeBusTransactions(globalCycle, lineRead);
             globalCycle++;
+
+            if(lineRead > 10000*k) {
+                System.out.println("hang in there!!!! line read = "+lineRead);
+                k++;
+            }
         }
 
     }
@@ -126,6 +138,7 @@ public class CacheSimulation {
         for(boolean b : isComplete) {
             if(!b) return false;
         }
+        System.out.println("done");
 //        if(!Bus.isBusTransactionComplete || Bus.isAllOpsFinished() != 0)
 //            return false;
         return true;
@@ -142,34 +155,12 @@ public class CacheSimulation {
             String[] proto = {"msi","mesi"};
             String[] bm = {"fft","weather"};
 
-            for(String f:bm) {
-                for(String p:proto) {
-                    for(int aso : asso) {
-                        for(int b: blkSize) {
-                            for(int c: cacheSize) {
-                                for(int pro : processors) {
-                                    String file = p+" "+pro+" "+c+" "+aso+" "+b+" "+f;
-                                    long beginOne = System.currentTimeMillis();
-                                    CacheSimulation cs1 = new CacheSimulation(p,pro,c,aso,b,file);
-                                    cs1.run(f,Integer.toString(pro));
-                                    long endOne = System.currentTimeMillis();
-                                    long time = endOne - beginOne;
-                                    cs1.log(time);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            //4 and 8 not done
-
-//            String file = p+" "+pro+" "+c+" "+aso+" "+b;
-//            long beginOne = System.currentTimeMillis();
-//            CacheSimulation cs1 = new CacheSimulation("msi",2,1,2,32," msi 2 1 2 32 fft");
-//            cs1.run("test",Integer.toString(1));
-//            long endOne = System.currentTimeMillis();
-//            long time = endOne - beginOne;
-//            cs1.log(time);
+            long beginOne = System.currentTimeMillis();
+            CacheSimulation cs1 = new CacheSimulation("msi",2,1,4,32," msi 2 1 4 32 fft");
+            cs1.run("fft",Integer.toString(2));
+            long endOne = System.currentTimeMillis();
+            long time = endOne - beginOne;
+            cs1.log(time);
 
 
 

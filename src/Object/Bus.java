@@ -21,7 +21,7 @@ public class Bus {
     static Vector<Processor> processors;
     static Queue<List<OperationPair>> busOperations;
     static List<OperationPair> cycleOps;
-    static int expectedTerminationCycle;
+    public static int expectedTerminationCycle;
     static OperationPair highPriorityOps;
     static String fileN;
 
@@ -51,6 +51,17 @@ public class Bus {
         cycleOps.add(op);
     }
 
+    public static void addFlushToFrontOfQueue(OperationPair flush) {
+        List<OperationPair> flushOp = new ArrayList<OperationPair>();
+        flushOp.add(flush);
+        Queue<List<OperationPair>> newQueue = new LinkedList<List<OperationPair>>();
+        newQueue.add(flushOp);
+        for(Object op : busOperations) {
+            newQueue.add((List<OperationPair>)op);
+        }
+        busOperations = newQueue;
+    }
+
     public static int isAllOpsFinished() {
         return busOperations.size();
     }
@@ -63,34 +74,21 @@ public class Bus {
         return isBlocked;
     }
 
-    public static void executeBusTransactions(int currCycle) {
+    public static void executeBusTransactions(int currCycle, int debug) {
         if(!cycleOps.isEmpty()) {
             busOperations.add(new ArrayList<OperationPair>(cycleOps));
             cycleOps.clear();
         }
-        if(currCycle == expectedTerminationCycle)
+        int u;
+        if(debug > 3790000)
+            u = 1;
+
+        if(currCycle >= expectedTerminationCycle)
             isBusTransactionComplete = true;
         else
             isBusTransactionComplete = false;
 
-//        if(!busOperations.isEmpty()) {
-//            System.out.print("\n@ cycle "+currCycle+" ,tobe executed in seq: ");
-//            for(List<OperationPair> i : busOperations) {
-//                System.out.print("[ ");
-//                for(OperationPair op : i) {
-//                    System.out.print(op.getOpsNumber()+" "+"from "+op.getInitiatorNumber()+" ");
-//                }
-//                System.out.println("]");
-//            }
-//        }
-        if(!checkBusBlock()) {
-            if (isHighPriorityOps) {
-                busLine.setBusLine(highPriorityOps);
-                busLine.setResult(true);
-                isHighPriorityOps = false;
-                setExpectedTerminationCycle(highPriorityOps.getOpsNumber(), currCycle);
-//                System.out.println("decide to execute : " + highPriorityOps.getOpsNumber() + " from " + highPriorityOps.getInitiatorNumber());
-            } else if (!busOperations.isEmpty()) {
+        if(!checkBusBlock() && !busOperations.isEmpty()) {
                 busLine = new BusLine();
                 OperationPair op;
                 List<OperationPair> busCycleOps = busOperations.peek();
@@ -103,7 +101,7 @@ public class Bus {
 //                System.out.println("decide to execute : " + op.getOpsNumber() + " from " + op.getInitiatorNumber());
                 busLine.setBusLine(op);
                 setExpectedTerminationCycle(op.getOpsNumber(), currCycle);
-            }
+//            }
 
         }
     }
