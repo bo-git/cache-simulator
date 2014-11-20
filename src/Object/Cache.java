@@ -28,25 +28,27 @@ public class Cache {
 
     private int protocol, cacheIdentity;
     private boolean isUniProcessor, isWaiting;
-    private OperationPair currWaitingOperation;
+    private OperationPair currWaitingOperation, lastSnoopNCheckOp;
+    String fileN;
 
-    private int cycles, memAccess, readMiss, writeMiss, writeHit, readHit;
+    private int cycles, memAccess, readMiss, writeMiss, writeHit, readHit, executionCycle;
 
     private Cache cache;
-    public Cache getInstance(int cacheSize, int blockSize, int associativity, int protocol, int number, boolean isUniProc) {
+    public Cache getInstance(int cacheSize, int blockSize, int associativity, int protocol, int number, boolean isUniProc, String filename) {
         if(cache == null) {
-            cache = new Cache(cacheSize, blockSize, associativity, protocol, number, isUniProc);
+            cache = new Cache(cacheSize, blockSize, associativity, protocol, number, isUniProc, filename);
         }
         return cache;
     }
     public Cache() {}
-    public Cache(int cacheSize, int blockSize, int associativity, int protocol, int number, boolean isUniProc) {
+    public Cache(int cacheSize, int blockSize, int associativity, int protocol, int number, boolean isUniProc, String filename) {
         this.cacheSize = cacheSize * 1024;
         this.blockSize = blockSize;
         this.associativity = associativity;
         this.protocol = protocol;
         this.cacheIdentity = number;
         this.isUniProcessor = isUniProc;
+        fileN = filename;
         init();
     }
 
@@ -57,6 +59,7 @@ public class Cache {
         blockOffset = (int) logBase2(this.blockSize);
         rowIndex = (int) logBase2(this.blockSets);
         tagSize = CPU_ADDRESS_SPACE - blockOffset - rowIndex;
+        lastSnoopNCheckOp = new OperationPair(-1,-1,"",-1);
 
         System.out.println(
                 "tagsize: "+tagSize+"\tblock number: "+numOfBlocks+"\n"+
@@ -107,9 +110,13 @@ public class Cache {
                 Bus.continueBusReadorEx(cycle);
                 isWaiting = true;
             }
+//        } else if(!isUniProcessor && Bus.busLine.getReceiverProcessorNumberOnBus() != cacheIdentity) { //not equal to the same identity and not uniproc
         } else if(!isUniProcessor) { //not equal to the same identity and not uniproc
+            if(lastSnoopNCheckOp.equals(op))
+                return;
             if(op.getOpsNumber() == Bus.BUS_READ) executeBusRead(op);
             if(op.getOpsNumber() == Bus.BUS_READEX) executeBusReadEx(op);
+            lastSnoopNCheckOp = op;
         }
     }
 
@@ -175,6 +182,7 @@ public class Cache {
 
     public int processorReadCache(String address) {
         VisitAddress addr = new VisitAddress(address);
+        executionCycle++;
         Vector<CacheLine> cacheSet;
         if(associativity > 1)
             cacheSet = cacheLines.get(addr.set);
@@ -341,6 +349,7 @@ public class Cache {
 
     public void processorWriteCache(String address) {
         VisitAddress addr = new VisitAddress(address);
+        executionCycle++;
         Vector<CacheLine> cacheSet;
         if(associativity > 1)
             cacheSet = cacheLines.get(addr.set);
@@ -543,7 +552,7 @@ public class Cache {
     }
 
     public void createlog() throws IOException{
-        BufferedWriter bw = new BufferedWriter(new FileWriter(LOG_PATH+cacheIdentity+".txt", false));
+        BufferedWriter bw = new BufferedWriter(new FileWriter(LOG_PATH+cacheIdentity+" "+fileN+".txt", false));
         bw.write("Number of cycles:\t\t\t"+cycles);
         bw.newLine();
         bw.write("Number of memory access:\t\t"+memAccess);
@@ -555,6 +564,8 @@ public class Cache {
         bw.write("Number of write miss:\t\t\t"+writeMiss);
         bw.newLine();
         bw.write("Number of write hit:\t\t\t"+writeHit);
+        bw.newLine();
+        bw.write("Number of execution cycle:\t\t\t"+executionCycle);
         bw.newLine();
         bw.flush();
         bw.close();
@@ -581,7 +592,7 @@ public class Cache {
 
 
     public static void main(String[] args) {
-        Cache c = new Cache(1,32,2, MSI.PROTOCOL,1, true);
+//        Cache c = new Cache(1,32,2, MSI.PROTOCOL,1, true);
         System.out.println(12%32);
         System.out.println(String.format("%32s",new BigInteger("00123A", 16).toString(2)).replace(' ','0'));
     }

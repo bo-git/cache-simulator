@@ -15,8 +15,8 @@ public class Processor {
     int cacheState;
     int processorNum;
 
-    public Processor(int cacheSize, int blockSize, int associativity, int protocol, int procNum, boolean isUniProc) {
-        cache = new Cache().getInstance(cacheSize, blockSize, associativity, protocol, procNum, isUniProc);
+    public Processor(int cacheSize, int blockSize, int associativity, int protocol, int procNum, boolean isUniProc, String filename) {
+        cache = new Cache().getInstance(cacheSize, blockSize, associativity, protocol, procNum, isUniProc, filename);
         cacheProtocol = protocol;
         processorNum = procNum;
         if(protocol == MESI.PROTOCOL)

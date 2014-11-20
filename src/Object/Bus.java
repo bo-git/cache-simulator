@@ -13,7 +13,7 @@ public class Bus {
     static final int BUS_READ = 1;
     static final int BUS_READEX = 2;
     static final int BUS_FLUSH = 3;
-    static final String LOG_PATH = "logs/Bus.txt";
+    static final String LOG_PATH = "logs/Bus";
 
     static int numOfProc, dataOnBus;
     static boolean isBlocked, isHighPriorityOps;
@@ -23,15 +23,17 @@ public class Bus {
     static List<OperationPair> cycleOps;
     static int expectedTerminationCycle;
     static OperationPair highPriorityOps;
+    static String fileN;
 
     static BusLine busLine; //where cache snoops, check for results
 
-    public static void initBus(Vector<Processor> procs) {
+    public static void initBus(Vector<Processor> procs, String fileName) {
         busOperations = new LinkedList<List<OperationPair>>();
         processors = procs;
         cycleOps = new ArrayList<OperationPair>();
         numOfProc = procs.size();
         expectedTerminationCycle = -1;
+        fileN = fileName;
         busLine = new BusLine();
     }
 
@@ -102,14 +104,8 @@ public class Bus {
                 busLine.setBusLine(op);
                 setExpectedTerminationCycle(op.getOpsNumber(), currCycle);
             }
-//            if(op.getOpsNumber() == BUS_ACCESS_MEMORY_READ ||
-//                    op.getOpsNumber() == BUS_ACCESS_MEMORY_WRITE ||
-//                    op.getOpsNumber() == BUS_FLUSH)
-//                accessMemory();
+
         }
-//        }else {
-////            System.out.println("bus block: "+isBusBlocked()+"  ops count: "+busOperations.size());
-//        }
     }
 
     public static void continueBusReadorEx(int cycle) {
@@ -129,10 +125,11 @@ public class Bus {
     public static void setExpectedTerminationCycle(int opsNum, int cycle) {
         if((opsNum == BUS_READ || opsNum == BUS_READEX) && numOfProc > 1)
             expectedTerminationCycle = cycle + 2;
-        else if (opsNum == BUS_FLUSH && numOfProc > 1)
-            expectedTerminationCycle = cycle + 8; //one cycle is used to supply data
-        else if (numOfProc == 1) {
+        else if (opsNum == BUS_FLUSH && numOfProc > 1) {
             accessMemory();
+            expectedTerminationCycle = cycle + 8; //one cycle is used to supply data
+        } else if (numOfProc == 1) {
+            dataOnBus++;
             expectedTerminationCycle = cycle + 10;
         }
         isBusTransactionComplete = false;
@@ -143,9 +140,11 @@ public class Bus {
         return r.nextInt(size+1);
     }
 
-    public static void log() throws IOException {
-        BufferedWriter bw = new BufferedWriter(new FileWriter(LOG_PATH, false));
+    public static void log(long time) throws IOException {
+        BufferedWriter bw = new BufferedWriter(new FileWriter(LOG_PATH+" "+fileN+".txt", false));
         bw.write("Number of data:\t\t\t"+dataOnBus);
+        bw.newLine();
+        bw.write("time taken:\t\t\t"+time);
         bw.newLine();
         bw.flush();
         bw.close();

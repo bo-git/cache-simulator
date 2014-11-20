@@ -18,21 +18,21 @@ public class CacheSimulation {
     String[] operationQueue;
     boolean[] isComplete;
 
-    public CacheSimulation(String protocol, int numProcessor, int cacheSize, int associativity, int blkSize) {
+    public CacheSimulation(String protocol, int numProcessor, int cacheSize, int associativity, int blkSize, String filename) {
         processors = new Vector<Processor>();
         boolean isUniProcessor = true;
         if(numProcessor > 1) isUniProcessor = false;
         for (int i = 0; i < numProcessor; i++) {
             System.out.println(i);
             if(protocol.equalsIgnoreCase(MESI_PROTOCOL))
-                processors.add(new Processor(cacheSize, blkSize,associativity, MESI.PROTOCOL , i, isUniProcessor));
+                processors.add(new Processor(cacheSize, blkSize,associativity, MESI.PROTOCOL , i, isUniProcessor, filename));
             else
-                processors.add(new Processor(cacheSize, blkSize,associativity, MSI.PROTOCOL , i, isUniProcessor));
+                processors.add(new Processor(cacheSize, blkSize,associativity, MSI.PROTOCOL , i, isUniProcessor, filename));
         }
         System.out.println(processors.size());
         operationQueue = new String[numProcessor];
         isComplete = new boolean[numProcessor];
-        Bus.initBus(processors);
+        Bus.initBus(processors, filename);
 
     }
 
@@ -90,7 +90,7 @@ public class CacheSimulation {
             Bus.executeBusTransactions(globalCycle);
             globalCycle++;
         }
-        log();
+
     }
 
     void execute(String instruction, String address, int index, int currCycle) {
@@ -115,11 +115,11 @@ public class CacheSimulation {
 //        System.out.println();
     }
 
-    void log() throws IOException{
+    void log(long time) throws IOException{
         for(Processor processor : processors) {
             processor.createLog();
         }
-        Bus.log();
+        Bus.log(time);
     }
 
     boolean isAllComplete() {
@@ -135,12 +135,44 @@ public class CacheSimulation {
         try {
 //            CacheSimulation cs = new CacheSimulation(args[0], Integer.parseInt(args[2]), Integer.parseInt(args[3]), Integer.parseInt(args[4]), Integer.parseInt(args[5]));
 //            cs.run(args[1], args[2]);
-            long beginOne = System.currentTimeMillis();
-            CacheSimulation cs1 = new CacheSimulation("mesi",2,1,4,32);
-            cs1.run("fft","2");
-            long endOne = System.currentTimeMillis();
-            long time = endOne - beginOne;
-            System.out.println(time);
+            int[] processors = {1,2};
+            int[] cacheSize = {1,8,32};
+            int[] asso = {1,2,4};
+            int[] blkSize = {8,64,128};
+            String[] proto = {"msi","mesi"};
+            String[] bm = {"fft","weather"};
+
+            for(String f:bm) {
+                for(String p:proto) {
+                    for(int aso : asso) {
+                        for(int b: blkSize) {
+                            for(int c: cacheSize) {
+                                for(int pro : processors) {
+                                    String file = p+" "+pro+" "+c+" "+aso+" "+b+" "+f;
+                                    long beginOne = System.currentTimeMillis();
+                                    CacheSimulation cs1 = new CacheSimulation(p,pro,c,aso,b,file);
+                                    cs1.run(f,Integer.toString(pro));
+                                    long endOne = System.currentTimeMillis();
+                                    long time = endOne - beginOne;
+                                    cs1.log(time);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            //4 and 8 not done
+
+//            String file = p+" "+pro+" "+c+" "+aso+" "+b;
+//            long beginOne = System.currentTimeMillis();
+//            CacheSimulation cs1 = new CacheSimulation("msi",2,1,2,32," msi 2 1 2 32 fft");
+//            cs1.run("test",Integer.toString(1));
+//            long endOne = System.currentTimeMillis();
+//            long time = endOne - beginOne;
+//            cs1.log(time);
+
+
+
         } catch (Exception e) {
             e.printStackTrace();
         }
